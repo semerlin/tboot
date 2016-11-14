@@ -1,0 +1,89 @@
+#!/bin/sh -e
+
+board=""
+vendor=""
+arch=""
+cpu=""
+soc=""
+
+# 必须含有1个参数才执行if语句，参数为电路板名字
+if [ $# -eq 1 ]
+then
+	#从boards.cfg中取得符合电路板名字的行
+	line=`egrep -i "^[[:space:]]*$1[[:space:]]" boards.cfg` || {
+			echo "make: *** No rule to make target '$1_config'. Stop." >&2
+			exit 1
+	}
+
+	#把line取得的参数作为命令行参数
+	set ${line}
+
+fi
+
+
+# boards.cfg中电路板配置参数不能少于4个或者大于5个
+if [ $# -lt 4 ]
+then
+	echo "Failed: only $# configure parameters for '$1' board, must greater than 4." >&2
+	exit 1
+fi
+
+# 取得电路板基本信息
+board=$1
+arch=$2
+cpu=$3
+soc=$4
+
+[ $# -gt 4 ] && [ "$5" != "-" ] && vendor="$5"
+
+# 判断预设的ARCH和boards.cfg中的arch是否一致
+if [ "${ARCH}" -a "${ARCH}" != "${arch}" ]
+then
+	echo "Failed: ARCH=${ARCH}, should be '${arch}' for '$1' board" >&2
+	exit 1
+fi
+
+# 参数验证通过，开始配置电路板
+echo "Configuring for $1 board..."
+
+
+# 新建预配置文件文件夹和链接头文件
+mkdir -p ${OBJTREE}/include
+mkdir -p ${OBJTREE}/include2
+cd ${OBJTREE}/include2
+rm -f asm
+ln -s ${SRCTREE}/include/asm-$2 asm
+LNPREFIX="../../include2/asm/"
+cd ../include
+rm -rf asm-$2
+rm -f asm
+mkdir asm-$2
+ln -s asm-$2 asm
+
+rm -f asm-$2/arch
+
+ln -s ${LNPREFIX}arch-$3 asm-$2/arch
+
+if [ "$2" = "arm" ] ; then
+	rm -f asm-$2/proc
+	ln -s ${LNPREFIX}proc-armv asm-$2/proc
+fi
+
+
+
+# 配置信息写入到config.mk中
+echo "BOARD   = ${board}" > config.mk
+echo "ARCH    = ${arch}"  >> config.mk
+echo "CPU     = ${cpu}"   >> config.mk
+echo "SOC     = ${soc}"   >> config.mk
+
+[ "${vendor}" ] && echo "VENDOR  = ${vendor}" >> config.mk
+
+
+# 系统配置文件
+> config.h		# 创建新的系统配置文件
+echo "/* Automatically generated - do not edit */" >>config.h
+echo "#include <configs/$1.h>" >>config.h
+echo "#include <asm/config.h>" >>config.h
+
+exit 0
